@@ -41,12 +41,19 @@ def calculate_movement(data):
     if data is None or data.empty:
         return None
     data = data.copy()
-    data['Movement'] = np.where(data['Close'] > data['Close'].shift(1), 1, 0)
-    return data.dropna().reset_index()
+    # Create movement column only if Close column exists
+    if 'Close' in data.columns:
+        data['Movement'] = np.where(data['Close'] > data['Close'].shift(1), 1, 0)
+        return data.dropna().reset_index()
+    return None
 
 def train_prediction_model(stock_data, index_data):
     """Train prediction model with proper data alignment"""
     if stock_data is None or index_data is None:
+        return None, 0
+    
+    # Check if movement columns exist
+    if 'Movement' not in stock_data.columns or 'Movement' not in index_data.columns:
         return None, 0
     
     # Merge on date column instead of index
@@ -56,6 +63,10 @@ def train_prediction_model(stock_data, index_data):
                      suffixes=('_stock', '_index'))
     
     if len(merged) < 10:
+        return None, 0
+    
+    # Check if required columns exist
+    if 'Movement_index' not in merged.columns or 'Movement_stock' not in merged.columns:
         return None, 0
     
     X = merged[['Movement_index']]
