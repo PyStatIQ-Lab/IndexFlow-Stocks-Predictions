@@ -18,9 +18,11 @@ INDEX_MAP = {
     'NIFTYSMALLCAP250': 'NIFTY_SMALLCAP250.NS'
 }
 
-# Full stock lists (truncated in preview)
+# Full stock lists
 STOCK_LISTS = {
     'NIFTY50': ['ADANIENT.NS', 'ADANIPORTS.NS', 'APOLLOHOSP.NS', 'ASIANPAINT.NS', 'AXISBANK.NS', 'BAJAJ-AUTO.NS', 'BAJFINANCE.NS', 'BAJAJFINSV.NS', 'BEL.NS', 'BPCL.NS', 'BHARTIARTL.NS', 'BRITANNIA.NS', 'CIPLA.NS', 'COALINDIA.NS', 'DRREDDY.NS', 'EICHERMOT.NS', 'GRASIM.NS', 'HCLTECH.NS', 'HDFCBANK.NS', 'HDFCLIFE.NS', 'HEROMOTOCO.NS', 'HINDALCO.NS', 'HINDUNILVR.NS', 'ICICIBANK.NS', 'ITC.NS', 'INDUSINDBK.NS', 'INFY.NS', 'JSWSTEEL.NS', 'KOTAKBANK.NS', 'LT.NS', 'M&M.NS', 'MARUTI.NS', 'NTPC.NS', 'NESTLEIND.NS', 'ONGC.NS', 'POWERGRID.NS', 'RELIANCE.NS', 'SBILIFE.NS', 'SHRIRAMFIN.NS', 'SBIN.NS', 'SUNPHARMA.NS', 'TCS.NS', 'TATACONSUM.NS', 'TATAMOTORS.NS', 'TATASTEEL.NS', 'TECHM.NS', 'TITAN.NS', 'TRENT.NS', 'ULTRACEMCO.NS', 'WIPRO.NS'],
+    'NIFTYNEXT50': ['ABB.NS', 'ADANIENSOL.NS', 'ADANIGREEN.NS', 'ADANIPOWER.NS', 'ATGL.NS', 'AMBUJACEM.NS', 'DMART.NS', 'BAJAJHLDNG.NS', 'BANKBARODA.NS', 'BHEL.NS', 'BOSCHLTD.NS', 'CANBK.NS', 'CHOLAFIN.NS', 'DLF.NS', 'DABUR.NS', 'DIVISLAB.NS', 'GAIL.NS', 'GODREJCP.NS', 'HAVELLS.NS', 'HAL.NS', 'ICICIGI.NS', 'ICICIPRULI.NS', 'IOC.NS', 'IRCTC.NS', 'IRFC.NS', 'NAUKRI.NS', 'INDIGO.NS', 'JSWENERGY.NS', 'JINDALSTEL.NS', 'JIOFIN.NS', 'LTIM.NS', 'LICI.NS', 'LODHA.NS', 'NHPC.NS', 'PIDILITIND.NS', 'PFC.NS', 'PNB.NS', 'RECLTD.NS', 'MOTHERSON.NS', 'SHREECEM.NS', 'SIEMENS.NS', 'TVSMOTOR.NS', 'TATAPOWER.NS', 'TORNTPHARM.NS', 'UNIONBANK.NS', 'UNITDSPR.NS', 'VBL.NS', 'VEDL.NS', 'ZOMATO.NS', 'ZYDUSLIFE.NS'],
+    'NIFTY100': ['ABB.NS', 'ADANIENSOL.NS', 'ADANIENT.NS', 'ADANIGREEN.NS', 'ADANIPORTS.NS', 'ADANIPOWER.NS', 'ATGL.NS', 'AMBUJACEM.NS', 'APOLLOHOSP.NS', 'ASIANPAINT.NS', 'DMART.NS', 'AXISBANK.NS', 'BAJAJ-AUTO.NS', 'BAJFINANCE.NS', 'BAJAJFINSV.NS', 'BAJAJHLDNG.NS', 'BANKBARODA.NS', 'BEL.NS', 'BHEL.NS', 'BPCL.NS', 'BHARTIARTL.NS', 'BOSCHLTD.NS', 'BRITANNIA.NS', 'CANBK.NS', 'CHOLAFIN.NS', 'CIPLA.NS', 'COALINDIA.NS', 'DLF.NS', 'DABUR.NS', 'DIVISLAB.NS', 'DRREDDY.NS', 'EICHERMOT.NS', 'GAIL.NS', 'GODREJCP.NS', 'GRASIM.NS', 'HCLTECH.NS', 'HDFCBANK.NS', 'HDFCLIFE.NS', 'HAVELLS.NS', 'HEROMOTOCO.NS', 'HINDALCO.NS', 'HAL.NS', 'HINDUNILVR.NS', 'ICICIBANK.NS', 'ICICIGI.NS', 'ICICIPRULI.NS', 'ITC.NS', 'IOC.NS', 'IRCTC.NS', 'IRFC.NS', 'INDUSINDBK.NS', 'NAUKRI.NS', 'INFY.NS', 'INDIGO.NS', 'JSWENERGY.NS', 'JSWSTEEL.NS', 'JINDALSTEL.NS', 'JIOFIN.NS', 'KOTAKBANK.NS', 'LTIM.NS', 'LT.NS', 'LICI.NS', 'LODHA.NS', 'M&M.NS', 'MARUTI.NS', 'NHPC.NS', 'NTPC.NS', 'NESTLEIND.NS', 'ONGC.NS', 'PIDILITIND.NS', 'PFC.NS', 'POWERGRID.NS', 'PNB.NS', 'RECLTD.NS', 'RELIANCE.NS', 'SBILIFE.NS', 'MOTHERSON.NS', 'SHREECEM.NS', 'SHRIRAMFIN.NS', 'SIEMENS.NS', 'SBIN.NS', 'SUNPHARMA.NS', 'TVSMOTOR.NS', 'TCS.NS', 'TATACONSUM.NS', 'TATAMOTORS.NS', 'TATAPOWER.NS', 'TATASTEEL.NS', 'TECHM.NS', 'TITAN.NS', 'TORNTPHARM.NS', 'TRENT.NS', 'ULTRACEMCO.NS', 'UNIONBANK.NS', 'UNITDSPR.NS', 'VBL.NS', 'VEDL.NS', 'WIPRO.NS', 'ZOMATO.NS', 'ZYDUSLIFE.NS'],
     # Other lists truncated for brevity
 }
 
@@ -33,7 +35,8 @@ def download_data(symbol, period='1y'):
         # Ensure proper datetime index
         data.index = pd.to_datetime(data.index)
         return data
-    except Exception:
+    except Exception as e:
+        st.error(f"Error downloading {symbol}: {str(e)}")
         return None
 
 def calculate_movement(data):
@@ -56,27 +59,28 @@ def train_prediction_model(stock_data, index_data):
     if 'Movement' not in stock_data.columns or 'Movement' not in index_data.columns:
         return None, 0
     
-    # Merge on date column instead of index
-    merged = pd.merge(stock_data[['Date', 'Movement']], 
-                     index_data[['Date', 'Movement']], 
-                     on='Date', 
-                     suffixes=('_stock', '_index'))
+    # Merge on date column with explicit suffixes
+    merged = pd.merge(
+        stock_data[['Date', 'Movement']].rename(columns={'Movement': 'Stock_Movement'}),
+        index_data[['Date', 'Movement']].rename(columns={'Movement': 'Index_Movement'}),
+        on='Date'
+    )
     
     if len(merged) < 10:
         return None, 0
     
     # Check if required columns exist
-    if 'Movement_index' not in merged.columns or 'Movement_stock' not in merged.columns:
+    if 'Index_Movement' not in merged.columns or 'Stock_Movement' not in merged.columns:
         return None, 0
     
-    X = merged[['Movement_index']]
-    y = merged['Movement_stock']
+    X = merged[['Index_Movement']]
+    y = merged['Stock_Movement']
     
     # Split data
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     
     # Train model
-    model = RandomForestClassifier(n_estimators=50, random_state=42)  # Reduced complexity
+    model = RandomForestClassifier(n_estimators=50, random_state=42)
     model.fit(X_train, y_train)
     
     # Evaluate
@@ -123,6 +127,7 @@ def main():
     col1, col2, col3 = st.columns(3)
     col1.metric("Index Symbol", index_symbol)
     col2.metric("Historical Up Days", f"{index_up:.2f}%")
+    col3.metric("Data Points", len(index_data))
     
     # Show index chart
     fig = go.Figure()
@@ -140,15 +145,21 @@ def main():
     )
     st.plotly_chart(fig, use_container_width=True)
     
+    # Debug: Show index data
+    with st.expander("Index Data Preview"):
+        st.dataframe(index_data.head())
+        st.write(f"Columns: {', '.join(index_data.columns)}")
+    
     # Stock prediction section
     st.subheader("Stock Movement Predictions")
     st.info(f"Analyzing stocks in {selected_index} based on index correlation")
     
     # Get stocks for selected index
-    stocks = STOCK_LISTS[selected_index][:20]  # Limit to 20 for performance
+    stocks = STOCK_LISTS[selected_index][:10]  # Limit to 10 for debugging
     
     # Analyze each stock
     results = []
+    failures = []
     progress_bar = st.progress(0)
     status_text = st.empty()
     
@@ -159,16 +170,25 @@ def main():
         # Download stock data
         stock_data = download_data(stock_symbol, period)
         if stock_data is None:
+            failures.append(f"{stock_symbol}: Failed to download")
             continue
             
         # Process stock data
-        stock_data = calculate_movement(stock_data)
-        if stock_data is None:
+        stock_data_processed = calculate_movement(stock_data)
+        if stock_data_processed is None:
+            failures.append(f"{stock_symbol}: Failed to calculate movement")
             continue
             
+        # Debug: Show stock data
+        if i == 0:  # Show first stock for debugging
+            with st.expander(f"First Stock Data ({stock_symbol})"):
+                st.dataframe(stock_data_processed.head())
+                st.write(f"Columns: {', '.join(stock_data_processed.columns)}")
+            
         # Train prediction model
-        model, accuracy = train_prediction_model(stock_data, index_data)
+        model, accuracy = train_prediction_model(stock_data_processed, index_data)
         if model is None:
+            failures.append(f"{stock_symbol}: Model training failed")
             continue
             
         # Predict based on most recent index movement
@@ -177,7 +197,7 @@ def main():
         prediction_prob = model.predict_proba(last_index_movement)[0]
         
         # Get actual movement
-        actual_movement = stock_data['Movement'].iloc[-1]
+        actual_movement = stock_data_processed['Movement'].iloc[-1]
         
         results.append({
             'Stock': stock_symbol.replace('.NS', ''),
@@ -197,7 +217,7 @@ def main():
         
         # Color formatting
         def color_prediction(val):
-            color = 'green' if 'Up' in val else 'red'
+            color = 'green' if '↑ Up' in val else 'red'
             return f'color: {color}'
         
         st.dataframe(
@@ -212,6 +232,13 @@ def main():
                  delta_color="off")
     else:
         st.warning("⚠️ No valid predictions generated. Try a different index or time period.")
+        
+    # Show failures if any
+    if failures:
+        with st.expander("Show Errors"):
+            st.write(f"{len(failures)} failures occurred:")
+            for failure in failures:
+                st.error(failure)
 
 if __name__ == "__main__":
     main()
