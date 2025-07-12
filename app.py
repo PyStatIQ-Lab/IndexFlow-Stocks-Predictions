@@ -2,10 +2,10 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
 import plotly.graph_objs as go
+from sklearn.linear_model import LinearRegression
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 # Fixed index mapping with correct Yahoo Finance symbols
 INDEX_MAP = {
@@ -27,67 +27,64 @@ STOCK_LISTS = {
 }
 
 def download_data(symbol, period='1y'):
-    """Download historical stock data with proper index handling"""
+    """Download historical stock data"""
     try:
         data = yf.download(symbol, period=period, progress=False)
         if data.empty:
             return None
-        # Ensure proper datetime index
-        data.index = pd.to_datetime(data.index)
         return data
     except Exception as e:
         st.error(f"Error downloading {symbol}: {str(e)}")
         return None
 
-def calculate_movement(data):
-    """Calculate daily price movement with index reset"""
+def calculate_returns(data):
+    """Calculate daily returns"""
     if data is None or data.empty:
         return None
     data = data.copy()
-    # Create movement column only if Close column exists
     if 'Close' in data.columns:
-        data['Movement'] = np.where(data['Close'] > data['Close'].shift(1), 1, 0)
-        return data.dropna().reset_index()
+        data['Return'] = data['Close'].pct_change()
+        return data.dropna()
     return None
 
-def train_prediction_model(stock_data, index_data):
-    """Train prediction model with proper data alignment"""
-    if stock_data is None or index_data is None:
-        return None, 0
+def calculate_correlation(stock_returns, index_returns):
+    """Calculate correlation between stock and index returns"""
+    if stock_returns is None or index_returns is None:
+        return None, None, None
     
-    # Check if movement columns exist
-    if 'Movement' not in stock_data.columns or 'Movement' not in index_data.columns:
-        return None, 0
-    
-    # Merge on date column with explicit suffixes
+    # Align dates
     merged = pd.merge(
-        stock_data[['Date', 'Movement']].rename(columns={'Movement': 'Stock_Movement'}),
-        index_data[['Date', 'Movement']].rename(columns={'Movement': 'Index_Movement'}),
-        on='Date'
+        stock_returns[['Return']], 
+        index_returns[['Return']], 
+        left_index=True, 
+        right_index=True, 
+        suffixes=('_stock', '_index')
     )
     
     if len(merged) < 10:
-        return None, 0
+        return None, None, None
     
-    # Check if required columns exist
-    if 'Index_Movement' not in merged.columns or 'Stock_Movement' not in merged.columns:
-        return None, 0
+    # Calculate correlation
+    correlation = merged['Return_stock'].corr(merged['Return_index'])
     
-    X = merged[['Index_Movement']]
-    y = merged['Stock_Movement']
+    # Prepare data for linear regression
+    X = merged[['Return_index']].values
+    y = merged['Return_stock'].values
     
-    # Split data
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    # Train linear regression model
+    model = LinearRegression()
+    model.fit(X, y)
     
-    # Train model
-    model = RandomForestClassifier(n_estimators=50, random_state=42)
-    model.fit(X_train, y_train)
+    beta = model.coef_[0]
+    alpha = model.intercept_
     
-    # Evaluate
-    y_pred = model.predict(X_test)
-    accuracy = accuracy_score(y_test, y_pred)
-    
-    return model, accuracy
+    return correlation, beta, alpha
+
+def predict_stock_return(index_percent_change, beta, alpha):
+    """Predict stock return based on index change"""
+    index_change_decimal = index_percent_change / 100.0
+    predicted_return = (alpha + beta * index_change_decimal) * 100
+    return predicted_return
 
 def main():
     st.set_page_config(
@@ -96,7 +93,7 @@ def main():
         layout="wide"
     )
     st.title("📈 IndexSync Stock Predictor")
-    st.markdown("Predict stock movements based on index trends")
+    st.markdown("Predict stock movements based on index correlations")
     
     # Sidebar controls
     with st.sidebar:
@@ -104,6 +101,11 @@ def main():
         selected_index = st.selectbox("Select Index", list(INDEX_MAP.keys()))
         period = st.selectbox("Data Period", ['3mo', '6mo', '1y', '2y'], index=2)
         st.info("Note: First run may take 30-60 seconds to fetch data")
+        
+        st.header("Prediction Parameters")
+        index_change_1 = st.number_input("Index Change Scenario 1 (%)", value=1.0, step=0.5)
+        index_change_2 = st.number_input("Index Change Scenario 2 (%)", value=2.0, step=0.5)
+        index_change_3 = st.number_input("Index Change Scenario 3 (%)", value=5.0, step=0.5)
     
     # Download index data
     index_symbol = INDEX_MAP[selected_index]
@@ -114,26 +116,24 @@ def main():
         st.error("❌ Failed to download index data. Please try another index or time period.")
         return
     
-    # Process index data
-    index_data_processed = calculate_movement(index_data)
-    if index_data_processed is None:
+    # Calculate index returns
+    index_returns = calculate_returns(index_data)
+    if index_returns is None or index_returns.empty:
         st.error("❌ Insufficient index data for analysis")
         return
-        
-    index_up = index_data_processed['Movement'].mean() * 100
     
     # Display index info
     st.subheader(f"{selected_index} Index Analysis")
     col1, col2, col3 = st.columns(3)
     col1.metric("Index Symbol", index_symbol)
-    col2.metric("Historical Up Days", f"{index_up:.2f}%")
-    col3.metric("Data Points", len(index_data_processed))
+    col2.metric("Average Daily Return", f"{index_returns['Return'].mean() * 100:.4f}%")
+    col3.metric("Volatility", f"{index_returns['Return'].std() * 100:.4f}%")
     
     # Show index chart
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=index_data_processed['Date'], 
-        y=index_data_processed['Close'], 
+        x=index_returns.index, 
+        y=index_returns['Close'], 
         name='Close Price', 
         line=dict(color='#636EFA')
     ))
@@ -145,22 +145,23 @@ def main():
     )
     st.plotly_chart(fig, use_container_width=True)
     
-    # Debug: Show index data
-    with st.expander("Index Data Preview"):
-        st.dataframe(index_data_processed.head())
-        # FIX: Convert columns to list before joining
-        st.write(f"Columns: {', '.join(index_data_processed.columns.tolist())}")
+    # Show index returns distribution
+    st.subheader("Index Returns Distribution")
+    fig, ax = plt.subplots(figsize=(10, 4))
+    sns.histplot(index_returns['Return'] * 100, kde=True, ax=ax)
+    plt.xlabel('Daily Return (%)')
+    plt.title('Distribution of Index Daily Returns')
+    st.pyplot(fig)
     
     # Stock prediction section
     st.subheader("Stock Movement Predictions")
-    st.info(f"Analyzing stocks in {selected_index} based on index correlation")
+    st.info(f"Predicting stock movements in {selected_index} based on index correlations")
     
     # Get stocks for selected index
-    stocks = STOCK_LISTS[selected_index][:10]  # Limit to 10 for debugging
+    stocks = STOCK_LISTS[selected_index][:20]  # Limit to 20 for performance
     
     # Analyze each stock
     results = []
-    failures = []
     progress_bar = st.progress(0)
     status_text = st.empty()
     
@@ -171,43 +172,31 @@ def main():
         # Download stock data
         stock_data = download_data(stock_symbol, period)
         if stock_data is None:
-            failures.append(f"{stock_symbol}: Failed to download")
             continue
             
-        # Process stock data
-        stock_data_processed = calculate_movement(stock_data)
-        if stock_data_processed is None:
-            failures.append(f"{stock_symbol}: Failed to calculate movement")
+        # Calculate stock returns
+        stock_returns = calculate_returns(stock_data)
+        if stock_returns is None or stock_returns.empty:
             continue
             
-        # Debug: Show stock data for first stock
-        if i == 0:  
-            with st.expander(f"First Stock Data ({stock_symbol})"):
-                st.dataframe(stock_data_processed.head())
-                # FIX: Convert columns to list before joining
-                st.write(f"Columns: {', '.join(stock_data_processed.columns.tolist())}")
-            
-        # Train prediction model
-        model, accuracy = train_prediction_model(stock_data_processed, index_data_processed)
-        if model is None:
-            failures.append(f"{stock_symbol}: Model training failed")
+        # Calculate correlation and beta
+        correlation, beta, alpha = calculate_correlation(stock_returns, index_returns)
+        if correlation is None or beta is None:
             continue
             
-        # Predict based on most recent index movement
-        last_index_movement = index_data_processed[['Movement']].iloc[-1].values.reshape(1, -1)
-        prediction = model.predict(last_index_movement)[0]
-        prediction_prob = model.predict_proba(last_index_movement)[0]
-        
-        # Get actual movement
-        actual_movement = stock_data_processed['Movement'].iloc[-1]
+        # Predict returns for different scenarios
+        pred_1 = predict_stock_return(index_change_1, beta, alpha)
+        pred_2 = predict_stock_return(index_change_2, beta, alpha)
+        pred_3 = predict_stock_return(index_change_3, beta, alpha)
         
         results.append({
             'Stock': stock_symbol.replace('.NS', ''),
-            'Prediction': '↑ Up' if prediction == 1 else '↓ Down',
-            'Confidence': f"{max(prediction_prob)*100:.1f}%",
-            'Actual': '↑ Up' if actual_movement == 1 else '↓ Down',
-            'Accuracy': f"{accuracy*100:.1f}%",
-            'Correct': 1 if prediction == actual_movement else 0
+            'Correlation': correlation,
+            'Beta': beta,
+            'Alpha (%)': alpha * 100,
+            f'Pred @ {index_change_1}%': f"{pred_1:.2f}%",
+            f'Pred @ {index_change_2}%': f"{pred_2:.2f}%",
+            f'Pred @ {index_change_3}%': f"{pred_3:.2f}%",
         })
     
     progress_bar.empty()
@@ -217,30 +206,50 @@ def main():
     if results:
         results_df = pd.DataFrame(results)
         
-        # Color formatting
-        def color_prediction(val):
-            color = 'green' if '↑ Up' in val else 'red'
-            return f'color: {color}'
+        # Sort by correlation (highest first)
+        results_df = results_df.sort_values('Correlation', ascending=False)
         
-        st.dataframe(
-            results_df.style.applymap(color_prediction, subset=['Prediction', 'Actual']),
-            use_container_width=True
-        )
+        # Format correlation and beta
+        results_df['Correlation'] = results_df['Correlation'].apply(lambda x: f"{x:.4f}")
+        results_df['Beta'] = results_df['Beta'].apply(lambda x: f"{x:.4f}")
+        results_df['Alpha (%)'] = results_df['Alpha (%)'].apply(lambda x: f"{x:.4f}%")
         
-        # Show summary
-        correct = sum(results_df['Correct'])
-        accuracy = correct / len(results) * 100
-        st.metric("Overall Prediction Accuracy", f"{accuracy:.1f}%", 
-                 delta_color="off")
+        # Display table
+        st.dataframe(results_df, use_container_width=True)
+        
+        # Show top correlated stocks
+        st.subheader("Top Correlated Stocks")
+        top_stocks = results_df.head(5)
+        
+        for _, row in top_stocks.iterrows():
+            stock = row['Stock']
+            beta = float(row['Beta'])
+            correlation = float(row['Correlation'])
+            
+            st.markdown(f"**{stock}** (Correlation: {correlation:.4f}, Beta: {beta:.4f})")
+            
+            # Create predictions for visualization
+            index_changes = np.linspace(-5, 5, 21)  # -5% to +5%
+            pred_returns = [predict_stock_return(change, beta, float(row['Alpha (%)'].replace('%', '')) / 100) for change in index_changes]
+            
+            fig, ax = plt.subplots(figsize=(8, 3))
+            ax.plot(index_changes, pred_returns, 'b-')
+            ax.set_xlabel('Index Change (%)')
+            ax.set_ylabel('Predicted Stock Change (%)')
+            ax.set_title(f'{stock} Prediction Model')
+            ax.grid(True)
+            st.pyplot(fig)
+            
+            # Show actual vs predicted
+            st.markdown(f"**Predicted Change for {stock}:**")
+            col1, col2, col3 = st.columns(3)
+            col1.metric(f"If Index +{index_change_1}%", f"{float(row[f'Pred @ {index_change_1}%'].replace('%', '')):.2f}%")
+            col2.metric(f"If Index +{index_change_2}%", f"{float(row[f'Pred @ {index_change_2}%'].replace('%', '')):.2f}%")
+            col3.metric(f"If Index +{index_change_3}%", f"{float(row[f'Pred @ {index_change_3}%'].replace('%', '')):.2f}%")
+            st.divider()
+            
     else:
         st.warning("⚠️ No valid predictions generated. Try a different index or time period.")
-        
-    # Show failures if any
-    if failures:
-        with st.expander("Show Errors"):
-            st.write(f"{len(failures)} failures occurred:")
-            for failure in failures:
-                st.error(failure)
 
 if __name__ == "__main__":
     main()
