@@ -29,7 +29,7 @@ STOCK_LISTS = {
 def download_data(symbol, period='1y'):
     """Download historical stock data"""
     try:
-        data = yf.download(symbol, period=period, progress=False)
+        data = yf.download(symbol, period=period, progress=False, auto_adjust=True)
         if data.empty:
             return None
         return data
@@ -45,7 +45,8 @@ def calculate_returns(data):
     if 'Close' in data.columns:
         data['Return'] = data['Close'].pct_change()
         # Reset index to get Date as a column
-        return data.dropna().reset_index()
+        data = data.dropna().reset_index()
+        return data
     return None
 
 def calculate_correlation(stock_returns, index_returns):
@@ -53,23 +54,26 @@ def calculate_correlation(stock_returns, index_returns):
     if stock_returns is None or index_returns is None:
         return None, None, None
     
+    # Rename columns before merging to avoid suffix issues
+    stock_renamed = stock_returns[['Date', 'Return']].rename(columns={'Return': 'Stock_Return'})
+    index_renamed = index_returns[['Date', 'Return']].rename(columns={'Return': 'Index_Return'})
+    
     # Merge on Date column
     merged = pd.merge(
-        stock_returns[['Date', 'Return']], 
-        index_returns[['Date', 'Return']], 
-        on='Date', 
-        suffixes=('_stock', '_index')
+        stock_renamed, 
+        index_renamed, 
+        on='Date'
     )
     
     if len(merged) < 10:
         return None, None, None
     
     # Calculate correlation
-    correlation = merged['Return_stock'].corr(merged['Return_index'])
+    correlation = merged['Stock_Return'].corr(merged['Index_Return'])
     
     # Prepare data for linear regression
-    X = merged[['Return_index']].values
-    y = merged['Return_stock'].values
+    X = merged[['Index_Return']].values
+    y = merged['Stock_Return'].values
     
     # Train linear regression model
     model = LinearRegression()
@@ -148,7 +152,7 @@ def main():
     # Show index returns distribution
     st.subheader("Index Returns Distribution")
     fig, ax = plt.subplots(figsize=(10, 4))
-    sns.histplot(index_returns['Return'] * 100, kde=True, ax=ax)
+    sns.histplot(index_returns['Return'] * 100, kde=True, ax=ax, bins=30)
     plt.xlabel('Daily Return (%)')
     plt.title('Distribution of Index Daily Returns')
     st.pyplot(fig)
@@ -193,10 +197,10 @@ def main():
             'Stock': stock_symbol.replace('.NS', ''),
             'Correlation': correlation,
             'Beta': beta,
-            'Alpha (%)': alpha * 100,
-            f'Pred @ {index_change_1}%': f"{pred_1:.2f}%",
-            f'Pred @ {index_change_2}%': f"{pred_2:.2f}%",
-            f'Pred @ {index_change_3}%': f"{pred_3:.2f}%",
+            'Alpha': alpha,
+            f'Pred @ {index_change_1}%': pred_1,
+            f'Pred @ {index_change_2}%': pred_2,
+            f'Pred @ {index_change_3}%': pred_3,
         })
     
     progress_bar.empty()
@@ -209,13 +213,17 @@ def main():
         # Sort by correlation (highest first)
         results_df = results_df.sort_values('Correlation', ascending=False)
         
-        # Format correlation and beta
-        results_df['Correlation'] = results_df['Correlation'].apply(lambda x: f"{x:.4f}")
-        results_df['Beta'] = results_df['Beta'].apply(lambda x: f"{x:.4f}")
-        results_df['Alpha (%)'] = results_df['Alpha (%)'].apply(lambda x: f"{x:.4f}%")
+        # Format values for display
+        display_df = results_df.copy()
+        display_df['Correlation'] = display_df['Correlation'].apply(lambda x: f"{x:.4f}")
+        display_df['Beta'] = display_df['Beta'].apply(lambda x: f"{x:.4f}")
+        display_df['Alpha'] = display_df['Alpha'].apply(lambda x: f"{x*100:.4f}%")
+        display_df[f'Pred @ {index_change_1}%'] = display_df[f'Pred @ {index_change_1}%'].apply(lambda x: f"{x:.2f}%")
+        display_df[f'Pred @ {index_change_2}%'] = display_df[f'Pred @ {index_change_2}%'].apply(lambda x: f"{x:.2f}%")
+        display_df[f'Pred @ {index_change_3}%'] = display_df[f'Pred @ {index_change_3}%'].apply(lambda x: f"{x:.2f}%")
         
         # Display table
-        st.dataframe(results_df, use_container_width=True)
+        st.dataframe(display_df, use_container_width=True)
         
         # Show top correlated stocks
         st.subheader("Top Correlated Stocks")
@@ -223,16 +231,15 @@ def main():
         
         for _, row in top_stocks.iterrows():
             stock = row['Stock']
-            beta = float(row['Beta'])
-            correlation = float(row['Correlation'])
+            beta = row['Beta']
+            alpha = row['Alpha']
+            correlation = row['Correlation']
             
             st.markdown(f"**{stock}** (Correlation: {correlation:.4f}, Beta: {beta:.4f})")
             
             # Create predictions for visualization
             index_changes = np.linspace(-5, 5, 21)  # -5% to +5%
-            # Convert percentage string to float
-            alpha_val = float(row['Alpha (%)'].replace('%', '')) / 100
-            pred_returns = [predict_stock_return(change, beta, alpha_val) for change in index_changes]
+            pred_returns = [predict_stock_return(change, beta, alpha) for change in index_changes]
             
             fig, ax = plt.subplots(figsize=(8, 3))
             ax.plot(index_changes, pred_returns, 'b-')
@@ -245,9 +252,9 @@ def main():
             # Show actual vs predicted
             st.markdown(f"**Predicted Change for {stock}:**")
             col1, col2, col3 = st.columns(3)
-            col1.metric(f"If Index +{index_change_1}%", f"{float(row[f'Pred @ {index_change_1}%'].replace('%', '')):.2f}%")
-            col2.metric(f"If Index +{index_change_2}%", f"{float(row[f'Pred @ {index_change_2}%'].replace('%', '')):.2f}%")
-            col3.metric(f"If Index +{index_change_3}%", f"{float(row[f'Pred @ {index_change_3}%'].replace('%', '')):.2f}%")
+            col1.metric(f"If Index +{index_change_1}%", f"{row[f'Pred @ {index_change_1}%']:.2f}%")
+            col2.metric(f"If Index +{index_change_2}%", f"{row[f'Pred @ {index_change_2}%']:.2f}%")
+            col3.metric(f"If Index +{index_change_3}%", f"{row[f'Pred @ {index_change_3}%']:.2f}%")
             st.divider()
             
     else:
