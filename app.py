@@ -71,6 +71,7 @@ def calculate_returns(data):
     try:
         data = data.copy()
         if 'Close' in data.columns:
+            # Keep all columns, just add returns
             data['Return'] = data['Close'].pct_change()
             data = data.dropna()
             return data
@@ -159,7 +160,7 @@ def main():
         st.error("❌ Failed to download index data. Please try another index or time period.")
         return
     
-    # Calculate index returns
+    # Calculate index returns - preserve all columns
     index_returns = calculate_returns(index_data)
     if index_returns is None or index_returns.empty:
         st.error("❌ Insufficient index data for analysis")
@@ -170,13 +171,16 @@ def main():
     col1, col2, col3 = st.columns(3)
     col1.metric("Index Symbol", index_symbol)
     col2.metric("Data Points", len(index_returns))
-    col3.metric("Last Close", f"₹{index_returns['Close'][-1]:.2f}")
     
-    # Show index chart
+    # FIX: Get last close from original data, not returns data
+    last_close = index_data['Close'].iloc[-1] if 'Close' in index_data.columns else "N/A"
+    col3.metric("Last Close", f"₹{last_close:.2f}" if isinstance(last_close, float) else last_close)
+    
+    # Show index chart using original data
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=index_returns.index, 
-        y=index_returns['Close'], 
+        x=index_data.index, 
+        y=index_data['Close'], 
         name='Close Price', 
         line=dict(color='#636EFA')
     ))
@@ -187,6 +191,17 @@ def main():
         template='plotly_white'
     )
     st.plotly_chart(fig, use_container_width=True)
+    
+    # Show index returns distribution
+    st.subheader("Index Returns Distribution")
+    if 'Return' in index_returns.columns:
+        fig, ax = plt.subplots(figsize=(10, 4))
+        sns.histplot(index_returns['Return'] * 100, kde=True, ax=ax, bins=30)
+        plt.xlabel('Daily Return (%)')
+        plt.title('Distribution of Index Daily Returns')
+        st.pyplot(fig)
+    else:
+        st.warning("Return data not available for index")
     
     # Stock prediction section
     st.subheader("Stock Movement Predictions")
@@ -285,6 +300,7 @@ def main():
             st.write("2. Check if symbols are valid (e.g., RELIANCE.NS)")
             st.write("3. Try a different index")
             st.write("4. Check your internet connection")
+            st.write("5. Ensure symbols have trading history for selected period")
 
 if __name__ == "__main__":
     main()
