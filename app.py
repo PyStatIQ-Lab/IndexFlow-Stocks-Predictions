@@ -115,25 +115,25 @@ def main():
         return
     
     # Process index data
-    index_data = calculate_movement(index_data)
-    if index_data is None:
+    index_data_processed = calculate_movement(index_data)
+    if index_data_processed is None:
         st.error("❌ Insufficient index data for analysis")
         return
         
-    index_up = index_data['Movement'].mean() * 100
+    index_up = index_data_processed['Movement'].mean() * 100
     
     # Display index info
     st.subheader(f"{selected_index} Index Analysis")
     col1, col2, col3 = st.columns(3)
     col1.metric("Index Symbol", index_symbol)
     col2.metric("Historical Up Days", f"{index_up:.2f}%")
-    col3.metric("Data Points", len(index_data))
+    col3.metric("Data Points", len(index_data_processed))
     
     # Show index chart
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=index_data['Date'], 
-        y=index_data['Close'], 
+        x=index_data_processed['Date'], 
+        y=index_data_processed['Close'], 
         name='Close Price', 
         line=dict(color='#636EFA')
     ))
@@ -147,8 +147,9 @@ def main():
     
     # Debug: Show index data
     with st.expander("Index Data Preview"):
-        st.dataframe(index_data.head())
-        st.write(f"Columns: {', '.join(index_data.columns)}")
+        st.dataframe(index_data_processed.head())
+        # FIX: Convert columns to list before joining
+        st.write(f"Columns: {', '.join(index_data_processed.columns.tolist())}")
     
     # Stock prediction section
     st.subheader("Stock Movement Predictions")
@@ -179,20 +180,21 @@ def main():
             failures.append(f"{stock_symbol}: Failed to calculate movement")
             continue
             
-        # Debug: Show stock data
-        if i == 0:  # Show first stock for debugging
+        # Debug: Show stock data for first stock
+        if i == 0:  
             with st.expander(f"First Stock Data ({stock_symbol})"):
                 st.dataframe(stock_data_processed.head())
-                st.write(f"Columns: {', '.join(stock_data_processed.columns)}")
+                # FIX: Convert columns to list before joining
+                st.write(f"Columns: {', '.join(stock_data_processed.columns.tolist())}")
             
         # Train prediction model
-        model, accuracy = train_prediction_model(stock_data_processed, index_data)
+        model, accuracy = train_prediction_model(stock_data_processed, index_data_processed)
         if model is None:
             failures.append(f"{stock_symbol}: Model training failed")
             continue
             
         # Predict based on most recent index movement
-        last_index_movement = index_data[['Movement']].iloc[-1].values.reshape(1, -1)
+        last_index_movement = index_data_processed[['Movement']].iloc[-1].values.reshape(1, -1)
         prediction = model.predict(last_index_movement)[0]
         prediction_prob = model.predict_proba(last_index_movement)[0]
         
