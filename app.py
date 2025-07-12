@@ -44,7 +44,8 @@ def calculate_returns(data):
     data = data.copy()
     if 'Close' in data.columns:
         data['Return'] = data['Close'].pct_change()
-        return data.dropna()
+        # Reset index to get Date as a column
+        return data.dropna().reset_index()
     return None
 
 def calculate_correlation(stock_returns, index_returns):
@@ -52,12 +53,11 @@ def calculate_correlation(stock_returns, index_returns):
     if stock_returns is None or index_returns is None:
         return None, None, None
     
-    # Align dates
+    # Merge on Date column
     merged = pd.merge(
-        stock_returns[['Return']], 
-        index_returns[['Return']], 
-        left_index=True, 
-        right_index=True, 
+        stock_returns[['Date', 'Return']], 
+        index_returns[['Date', 'Return']], 
+        on='Date', 
         suffixes=('_stock', '_index')
     )
     
@@ -132,7 +132,7 @@ def main():
     # Show index chart
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=index_returns.index, 
+        x=index_returns['Date'], 
         y=index_returns['Close'], 
         name='Close Price', 
         line=dict(color='#636EFA')
@@ -158,7 +158,7 @@ def main():
     st.info(f"Predicting stock movements in {selected_index} based on index correlations")
     
     # Get stocks for selected index
-    stocks = STOCK_LISTS[selected_index][:20]  # Limit to 20 for performance
+    stocks = STOCK_LISTS[selected_index][:15]  # Limit to 15 for performance
     
     # Analyze each stock
     results = []
@@ -230,7 +230,9 @@ def main():
             
             # Create predictions for visualization
             index_changes = np.linspace(-5, 5, 21)  # -5% to +5%
-            pred_returns = [predict_stock_return(change, beta, float(row['Alpha (%)'].replace('%', '')) / 100) for change in index_changes]
+            # Convert percentage string to float
+            alpha_val = float(row['Alpha (%)'].replace('%', '')) / 100
+            pred_returns = [predict_stock_return(change, beta, alpha_val) for change in index_changes]
             
             fig, ax = plt.subplots(figsize=(8, 3))
             ax.plot(index_changes, pred_returns, 'b-')
